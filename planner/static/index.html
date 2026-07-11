@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Voice Planner</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: -apple-system, system-ui, sans-serif;
+    background: #1a1a2e; color: #eaeaea;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 24px 16px;
+  }
+  h1 { font-size: 1.2rem; font-weight: 600; margin: 8px 0 24px; color: #9aa0ff; }
+  #recBtn {
+    width: 160px; height: 160px; border-radius: 50%;
+    border: none; cursor: pointer; margin: 24px 0;
+    background: #4a4aef; color: #fff; font-size: 1.1rem; font-weight: 600;
+    transition: background .2s, transform .1s;
+  }
+  #recBtn:active { transform: scale(.96); }
+  #recBtn.recording { background: #e04a4a; animation: pulse 1.2s infinite; }
+  #recBtn:disabled { background: #555; cursor: default; animation: none; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 18px rgba(224,74,74,.15); } }
+  #status { min-height: 1.4em; color: #aaa; text-align: center; }
+  #tasks { width: 100%; max-width: 420px; margin-top: 20px; }
+  .task {
+    background: #26264a; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px;
+  }
+  .task .title { font-weight: 600; }
+  .task .desc { color: #c9c9d9; font-size: .85rem; margin-top: 4px; }
+  .task .deadline { color: #ffb86b; font-size: .85rem; margin-top: 2px; }
+  .task .location { color: #8fd8a0; font-size: .85rem; margin-top: 2px; }
+  .task .source { color: #888; font-size: .8rem; margin-top: 6px; font-style: italic; }
+  .warn { color: #ffb86b; font-size: .85rem; margin-top: 12px; text-align: center; }
+  #history { width: 100%; max-width: 420px; margin-top: 8px; }
+  #history h2 {
+    font-size: .8rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .08em; color: #666; margin: 24px 0 10px; text-align: center;
+  }
+  .task .meta { color: #666; font-size: .75rem; margin-top: 6px; }
+  #tokenForm { display: none; flex-direction: column; gap: 10px; width: 100%; max-width: 420px; margin-top: 30px; }
+  #tokenForm input, #tokenForm button {
+    padding: 12px; border-radius: 8px; border: 1px solid #444;
+    background: #26264a; color: #eaeaea; font-size: 1rem;
+  }
+  #tokenForm button { background: #4a4aef; border: none; font-weight: 600; cursor: pointer; }
+  #changeToken { background: none; border: none; color: #555; font-size: .75rem; margin-top: auto; padding-top: 30px; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>🎙️ Voice Planner</h1>
+
+<form id="tokenForm">
+  <label for="tokenInput">Secret token (PLANNER_TOKEN from the Pi's .env):</label>
+  <input id="tokenInput" type="password" autocomplete="off" placeholder="paste token">
+  <button type="submit">Save</button>
+</form>
+
+<button id="recBtn" hidden>Record</button>
+<div id="status"></div>
+<div id="tasks"></div>
+<div id="history" hidden><h2>History</h2><div id="historyList"></div></div>
+<button id="changeToken" hidden>change token</button>
+
+<script>
+const recBtn = document.getElementById('recBtn');
+const statusEl = document.getElementById('status');
+const tasksEl = document.getElementById('tasks');
+const tokenForm = document.getElementById('tokenForm');
+const changeToken = document.getElementById('changeToken');
+const historyEl = document.getElementById('history');
+const historyList = document.getElementById('historyList');
+
+let recorder = null, chunks = [], timerId = null, startedAt = 0;
+
+function setup() {
+  const hasToken = !!localStorage.getItem('planner_token');
+  tokenForm.style.display = hasToken ? 'none' : 'flex';
+  recBtn.hidden = !hasToken;
+  changeToken.hidden = !hasToken;
+  historyEl.hidden = !hasToken;
+  if (hasToken) loadHistory();
+}
+
+tokenForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const v = document.getElementById('tokenInput').value.trim();
+  if (v) { localStorage.setItem('planner_token', v); setup(); }
+});
+changeToken.addEventListener('click', () => {
+  localStorage.removeItem('planner_token'); setup();
+});
+
+function pickMime() {
+  for (const m of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']) {
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+  }
+  return '';
+}
+
+recBtn.addEventListener('click', async () => {
+  if (recorder && recorder.state === 'recording') { recorder.stop(); return; }
+  tasksEl.innerHTML = '';
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    statusEl.textContent = 'Microphone blocked: ' + err.message;
+    return;
+  }
+  chunks = [];
+  recorder = new MediaRecorder(stream, pickMime() ? { mimeType: pickMime() } : undefined);
+  recorder.ondataavailable = e => chunks.push(e.data);
+  recorder.onstop = () => {
+    stream.getTracks().forEach(t => t.stop());
+    clearInterval(timerId);
+    send(new Blob(chunks, { type: recorder.mimeType }));
+  };
+  recorder.start();
+  startedAt = Date.now();
+  recBtn.textContent = 'Stop';
+  recBtn.classList.add('recording');
+  timerId = setInterval(() => {
+    statusEl.textContent = 'Recording… ' + Math.round((Date.now() - startedAt) / 1000) + 's';
+  }, 500);
+  statusEl.textContent = 'Recording…';
+});
+
+async function send(blob) {
+  recBtn.textContent = 'Record';
+  recBtn.classList.remove('recording');
+  recBtn.disabled = true;
+  statusEl.textContent = 'Thinking…';
+  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+  const form = new FormData();
+  form.append('audio', blob, 'note.' + ext);
+  try {
+    const res = await fetch('/note', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('planner_token') },
+      body: form,
+    });
+    const data = await res.json();
+    if (res.status === 401) {
+      statusEl.textContent = 'Wrong token — enter it again.';
+      localStorage.removeItem('planner_token'); setup();
+    } else if (!res.ok || data.status === 'error') {
+      statusEl.textContent = 'Error: ' + (data.error || res.status);
+    } else {
+      render(data);
+    }
+  } catch (err) {
+    statusEl.textContent = 'Could not reach the Pi: ' + err.message;
+  } finally {
+    recBtn.disabled = false;
+  }
+}
+
+function taskCard(t) {
+  const div = document.createElement('div');
+  div.className = 'task';
+  const title = document.createElement('div');
+  title.className = 'title'; title.textContent = t.title;
+  div.appendChild(title);
+  if (t.description) {
+    const de = document.createElement('div');
+    de.className = 'desc'; de.textContent = t.description;
+    div.appendChild(de);
+  }
+  if (t.deadline) {
+    const d = document.createElement('div');
+    d.className = 'deadline'; d.textContent = '📅 ' + t.deadline;
+    div.appendChild(d);
+  }
+  if (t.location) {
+    const l = document.createElement('div');
+    l.className = 'location'; l.textContent = '📍 ' + t.location;
+    div.appendChild(l);
+  }
+  const s = document.createElement('div');
+  s.className = 'source'; s.textContent = '“' + t.source + '”';
+  div.appendChild(s);
+  if (t.received_at) {
+    const m = document.createElement('div');
+    m.className = 'meta';
+    m.textContent = 'added ' + new Date(t.received_at).toLocaleString(undefined,
+      { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    div.appendChild(m);
+  }
+  return div;
+}
+
+function render(data) {
+  const tasks = data.tasks || [];
+  statusEl.textContent = tasks.length
+    ? 'Saved ' + tasks.length + ' task' + (tasks.length > 1 ? 's' : '') + ' ✓'
+    : 'No tasks found in that note.';
+  tasksEl.innerHTML = '';
+  for (const t of tasks) tasksEl.appendChild(taskCard(t));
+  if (Array.isArray(data.google_tasks)) {
+    const w = document.createElement('div');
+    w.className = 'warn';
+    w.textContent = '⚠ Not added to Google Tasks: ' + data.google_tasks[0];
+    tasksEl.appendChild(w);
+  }
+  loadHistory();
+}
+
+async function loadHistory() {
+  try {
+    const res = await fetch('/tasks', {
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('planner_token') },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    historyList.innerHTML = '';
+    for (const t of data.tasks) historyList.appendChild(taskCard(t));
+    historyEl.hidden = data.tasks.length === 0;
+  } catch (err) { /* history is best-effort; recording still works without it */ }
+}
+
+setup();
+</script>
+</body>
+</html>

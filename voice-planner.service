@@ -1,0 +1,23 @@
+[Unit]
+Description=Voice-to-text daily planner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{USER}}
+WorkingDirectory={{DIR}}
+ExecStart={{DIR}}/.venv/bin/python -m planner.server
+Restart=on-failure
+RestartSec=5
+
+# Keep it a polite neighbour to Immich and anything else on the Pi.
+MemoryMax=300M
+CPUWeight=50
+
+# Basic hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
