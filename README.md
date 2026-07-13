@@ -163,9 +163,42 @@ sudo systemctl restart voice-planner
 ### The record page (recommended)
 
 The Pi serves a one-button record page at `/`: open it, tap **Record**, talk,
-tap **Stop**, and your tasks appear on screen — with your task history listed
-below (served from the local `tasks.jsonl`). Works the same on Android,
-iPhone, and laptops — no extra apps beyond Tailscale.
+tap **Stop**, and your tasks appear on screen. The page is also a small task
+manager:
+
+- **Edit / complete / delete** any task inline. Deleting archives it (it
+  leaves the list and Google Tasks, but stays in the local DB forever).
+- **Times of day**: "call the plumber at half past five" stores 🕐 17:30 next
+  to the date. (Google Tasks' API only holds a date, so the time shows in the
+  Google task's notes instead.)
+- **Voice editing too**: a note can change the list, not just add to it —
+  "actually, cancel the dentist appointment" deletes it, "move the haircut to
+  Saturday" reschedules it, "I picked up the cake" completes it. The extractor
+  sees your current list and returns add/update/complete/delete actions; if it
+  can't confidently match the task you meant, it does nothing and tells you.
+- **Two-way Google Tasks sync**: changes made in the Google Tasks app
+  (deletes, completions, renames, due dates, even new tasks) appear here on
+  the next page load, and edits made here push to Google immediately.
+- **Maps**: tasks with a location get a 📍 chip that unfolds a mini
+  [Leaflet](https://leafletjs.com) map, and the **Map view** shows all located
+  tasks as pins. Locations are geocoded via OpenStreetMap's Nominatim, and the
+  location editor has type-ahead place search.
+- **Optional: business names on the map.** OpenStreetMap finds streets and
+  cities but not most named businesses ("Παπαδάκης οδοντίατρος"). To resolve
+  those too, add a `GOOGLE_PLACES_API_KEY` to `.env` — it's used only as a
+  fallback when OpenStreetMap comes up empty. Get one in the same Google
+  Cloud project you use for Tasks: enable **Places API (New)** in the API
+  Library, then **Credentials → Create credentials → API key** (restrict it
+  to the Places API). Note: Google requires billing to be enabled on the
+  project for Places, but personal use stays comfortably inside the free
+  monthly allowance.
+
+Storage on the Pi is two-layer: `data/tasks.jsonl` is the append-only journal
+of every voice note (never modified — the archive), and `data/tasks.db`
+(SQLite) is the live task list that editing and sync operate on.
+
+Works the same on Android, iPhone, and laptops — no extra apps beyond
+Tailscale.
 
 Browsers only allow microphone access over HTTPS, so use Tailscale's built-in
 HTTPS (one-time setup):

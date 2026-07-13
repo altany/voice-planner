@@ -6,18 +6,21 @@
 <meta name="theme-color" content="#1a1a2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Voice Planner</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; }
+  [hidden] { display: none !important; }
   body {
     font-family: -apple-system, system-ui, sans-serif;
     background: #1a1a2e; color: #eaeaea;
     min-height: 100vh; display: flex; flex-direction: column;
     align-items: center; padding: 24px 16px;
   }
-  h1 { font-size: 1.2rem; font-weight: 600; margin: 8px 0 24px; color: #9aa0ff; }
+  h1 { font-size: 1.2rem; font-weight: 600; margin: 8px 0 20px; color: #9aa0ff; }
   #recBtn {
-    width: 160px; height: 160px; border-radius: 50%;
-    border: none; cursor: pointer; margin: 24px 0;
+    width: 150px; height: 150px; border-radius: 50%;
+    border: none; cursor: pointer; margin: 12px 0;
     background: #4a4aef; color: #fff; font-size: 1.1rem; font-weight: 600;
     transition: background .2s, transform .1s;
   }
@@ -26,22 +29,57 @@
   #recBtn:disabled { background: #555; cursor: default; animation: none; }
   @keyframes pulse { 50% { box-shadow: 0 0 0 18px rgba(224,74,74,.15); } }
   #status { min-height: 1.4em; color: #aaa; text-align: center; }
-  #tasks { width: 100%; max-width: 420px; margin-top: 20px; }
-  .task {
-    background: #26264a; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px;
+  .warn { color: #ffb86b; font-size: .85rem; margin-top: 10px; text-align: center; max-width: 420px; }
+
+  #controls { display: flex; gap: 8px; margin-top: 22px; width: 100%; max-width: 420px; justify-content: center; }
+  .seg { display: flex; background: #26264a; border-radius: 8px; padding: 3px; }
+  .seg button {
+    border: none; background: none; color: #9a9ab8; padding: 6px 14px;
+    border-radius: 6px; font-size: .85rem; cursor: pointer;
   }
+  .seg button.on { background: #4a4aef; color: #fff; }
+
+  #list, #mapWrap { width: 100%; max-width: 420px; margin-top: 14px; }
+  #bigMap { height: 55vh; border-radius: 12px; }
+  .task { background: #26264a; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .task.completed .title { text-decoration: line-through; color: #888; }
+  .task.deleted { opacity: .45; }
   .task .title { font-weight: 600; }
   .task .desc { color: #c9c9d9; font-size: .85rem; margin-top: 4px; }
   .task .deadline { color: #ffb86b; font-size: .85rem; margin-top: 2px; }
-  .task .location { color: #8fd8a0; font-size: .85rem; margin-top: 2px; }
   .task .source { color: #888; font-size: .8rem; margin-top: 6px; font-style: italic; }
-  .warn { color: #ffb86b; font-size: .85rem; margin-top: 12px; text-align: center; }
-  #history { width: 100%; max-width: 420px; margin-top: 8px; }
-  #history h2 {
-    font-size: .8rem; font-weight: 600; text-transform: uppercase;
-    letter-spacing: .08em; color: #666; margin: 24px 0 10px; text-align: center;
-  }
   .task .meta { color: #666; font-size: .75rem; margin-top: 6px; }
+  .badge { display: inline-block; font-size: .7rem; color: #e08a8a; border: 1px solid #e08a8a;
+           border-radius: 6px; padding: 1px 6px; margin-left: 6px; vertical-align: 2px; }
+
+  .locBtn {
+    display: inline-block; margin-top: 4px; border: none; cursor: pointer;
+    background: rgba(143,216,160,.12); color: #8fd8a0; font-size: .85rem;
+    border-radius: 6px; padding: 3px 8px;
+  }
+  .cardMap { height: 180px; border-radius: 8px; margin-top: 8px; display: none; }
+
+  .actions { display: flex; gap: 6px; margin-top: 10px; }
+  .actions button {
+    border: none; background: #32325e; color: #cfcfe8; border-radius: 6px;
+    padding: 5px 10px; font-size: .85rem; cursor: pointer;
+  }
+  .actions button.danger { color: #ff9d9d; }
+
+  .editForm { display: flex; flex-direction: column; gap: 8px; }
+  .editForm input, .editForm textarea {
+    width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #444;
+    background: #1f1f3d; color: #eaeaea; font-size: .9rem; font-family: inherit;
+  }
+  .editForm label { font-size: .72rem; color: #8a8ab0; margin-bottom: -6px; }
+  .suggestBox { position: relative; }
+  .suggest {
+    position: absolute; left: 0; right: 0; top: 100%; z-index: 1000;
+    background: #1f1f3d; border: 1px solid #444; border-radius: 6px; overflow: hidden;
+  }
+  .suggest div { padding: 8px 10px; font-size: .8rem; cursor: pointer; }
+  .suggest div:hover { background: #32325e; }
+
   #tokenForm { display: none; flex-direction: column; gap: 10px; width: 100%; max-width: 420px; margin-top: 30px; }
   #tokenForm input, #tokenForm button {
     padding: 12px; border-radius: 8px; border: 1px solid #444;
@@ -49,6 +87,7 @@
   }
   #tokenForm button { background: #4a4aef; border: none; font-weight: 600; cursor: pointer; }
   #changeToken { background: none; border: none; color: #555; font-size: .75rem; margin-top: auto; padding-top: 30px; cursor: pointer; }
+  .leaflet-container { background: #14142a; }
 </style>
 </head>
 <body>
@@ -62,39 +101,332 @@
 
 <button id="recBtn" hidden>Record</button>
 <div id="status"></div>
-<div id="tasks"></div>
-<div id="history" hidden><h2>History</h2><div id="historyList"></div></div>
+<div id="noteWarn"></div>
+
+<div id="controls" hidden>
+  <div class="seg" id="viewSeg">
+    <button data-view="list" class="on">List</button>
+    <button data-view="map">Map</button>
+  </div>
+  <div class="seg" id="filterSeg">
+    <button data-filter="active" class="on">Active</button>
+    <button data-filter="all">All</button>
+  </div>
+</div>
+
+<div id="list"></div>
+<div id="mapWrap" hidden><div id="bigMap"></div></div>
 <button id="changeToken" hidden>change token</button>
 
 <script>
-const recBtn = document.getElementById('recBtn');
-const statusEl = document.getElementById('status');
-const tasksEl = document.getElementById('tasks');
-const tokenForm = document.getElementById('tokenForm');
-const changeToken = document.getElementById('changeToken');
-const historyEl = document.getElementById('history');
-const historyList = document.getElementById('historyList');
+const $ = id => document.getElementById(id);
+const recBtn = $('recBtn'), statusEl = $('status'), noteWarn = $('noteWarn');
+const listEl = $('list'), mapWrap = $('mapWrap'), controls = $('controls');
 
 let recorder = null, chunks = [], timerId = null, startedAt = 0;
+let tasks = [], view = 'list', filter = 'active';
+let bigMap = null, bigMapLayer = null;
+const cardMaps = {};
 
-function setup() {
-  const hasToken = !!localStorage.getItem('planner_token');
-  tokenForm.style.display = hasToken ? 'none' : 'flex';
-  recBtn.hidden = !hasToken;
-  changeToken.hidden = !hasToken;
-  historyEl.hidden = !hasToken;
-  if (hasToken) loadHistory();
+const token = () => localStorage.getItem('planner_token');
+const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILE_ATTR = '&copy; OpenStreetMap contributors';
+
+// The venue's own Google Maps page when we have it, else a coordinates pin.
+// An https link opens the Maps app where installed and the browser elsewhere.
+function mapsUrl(t) {
+  return t.maps_url ||
+    'https://maps.google.com/?q=' + (+t.lat).toFixed(5) + ',' + (+t.lon).toFixed(5);
 }
 
-tokenForm.addEventListener('submit', e => {
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + token(), ...(opts.headers || {}) },
+  });
+  if (res.status === 401) {
+    localStorage.removeItem('planner_token');
+    setup();
+    throw new Error('unauthorized');
+  }
+  return res;
+}
+
+function setup() {
+  const hasToken = !!token();
+  $('tokenForm').style.display = hasToken ? 'none' : 'flex';
+  recBtn.hidden = !hasToken;
+  controls.hidden = !hasToken;
+  $('changeToken').hidden = !hasToken;
+  if (hasToken) loadTasks();
+}
+
+$('tokenForm').addEventListener('submit', e => {
   e.preventDefault();
-  const v = document.getElementById('tokenInput').value.trim();
+  const v = $('tokenInput').value.trim();
   if (v) { localStorage.setItem('planner_token', v); setup(); }
 });
-changeToken.addEventListener('click', () => {
+$('changeToken').addEventListener('click', () => {
   localStorage.removeItem('planner_token'); setup();
 });
 
+/* ---------- view + filter controls ---------- */
+$('viewSeg').addEventListener('click', e => {
+  if (!e.target.dataset.view) return;
+  view = e.target.dataset.view;
+  [...$('viewSeg').children].forEach(b => b.classList.toggle('on', b === e.target));
+  render();
+});
+$('filterSeg').addEventListener('click', e => {
+  if (!e.target.dataset.filter) return;
+  filter = e.target.dataset.filter;
+  [...$('filterSeg').children].forEach(b => b.classList.toggle('on', b === e.target));
+  loadTasks();
+});
+
+async function loadTasks() {
+  try {
+    const res = await api('/tasks' + (filter === 'all' ? '?all=1' : ''));
+    if (!res.ok) return;
+    tasks = (await res.json()).tasks;
+    if (filter === 'active') tasks = tasks.filter(t => t.status === 'active');
+    render();
+  } catch (err) { /* recording still works without the list */ }
+}
+
+function render() {
+  listEl.style.display = view === 'list' ? '' : 'none';
+  mapWrap.hidden = view !== 'map';
+  if (view === 'list') renderList(); else renderMap();
+}
+
+/* ---------- list view ---------- */
+function renderList() {
+  listEl.innerHTML = '';
+  for (const t of tasks) listEl.appendChild(taskCard(t));
+}
+
+function taskCard(t) {
+  const card = document.createElement('div');
+  card.className = 'task ' + t.status;
+
+  const title = document.createElement('div');
+  title.className = 'title';
+  title.textContent = t.title;
+  if (t.status === 'deleted') {
+    const b = document.createElement('span');
+    b.className = 'badge'; b.textContent = 'deleted';
+    title.appendChild(b);
+  }
+  card.appendChild(title);
+
+  if (t.description) {
+    const d = document.createElement('div');
+    d.className = 'desc'; d.textContent = t.description;
+    card.appendChild(d);
+  }
+  if (t.deadline || t.deadline_time) {
+    const d = document.createElement('div');
+    d.className = 'deadline';
+    d.textContent = (t.deadline ? '📅 ' + t.deadline : '') +
+                    (t.deadline_time ? (t.deadline ? '  ·  ' : '') + '🕐 ' + t.deadline_time : '');
+    card.appendChild(d);
+  }
+  if (t.location) {
+    const locBtn = document.createElement('button');
+    locBtn.className = 'locBtn';
+    locBtn.textContent = '📍 ' + t.location + (t.lat ? ' ▾' : '');
+    card.appendChild(locBtn);
+    if (t.lat != null) {
+      const mapDiv = document.createElement('div');
+      mapDiv.className = 'cardMap';
+      card.appendChild(mapDiv);
+      locBtn.addEventListener('click', () => toggleCardMap(t, mapDiv));
+    }
+  }
+  if (t.source) {
+    const s = document.createElement('div');
+    s.className = 'source'; s.textContent = '“' + t.source + '”';
+    card.appendChild(s);
+  }
+  if (t.received_at) {
+    const m = document.createElement('div');
+    m.className = 'meta';
+    m.textContent = 'added ' + new Date(t.received_at).toLocaleString(undefined,
+      { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    card.appendChild(m);
+  }
+
+  if (t.status !== 'deleted') {
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    const done = document.createElement('button');
+    done.textContent = t.status === 'completed' ? '↩ undo' : '✓ done';
+    done.addEventListener('click', () =>
+      patchTask(t.id, { status: t.status === 'completed' ? 'active' : 'completed' }));
+    const edit = document.createElement('button');
+    edit.textContent = '✏️ edit';
+    edit.addEventListener('click', () => editCard(card, t));
+    const del = document.createElement('button');
+    del.className = 'danger';
+    del.textContent = '🗑 delete';
+    del.addEventListener('click', () => {
+      if (confirm('Delete "' + t.title + '"? (it stays in the archive)')) {
+        api('/tasks/' + t.id, { method: 'DELETE' }).then(loadTasks);
+      }
+    });
+    actions.append(done, edit, del);
+    if (t.lat != null) {
+      const nav = document.createElement('a');
+      nav.textContent = '🧭 maps';
+      nav.href = mapsUrl(t);
+      nav.target = '_blank';
+      nav.style.cssText = 'background:#32325e;color:#cfcfe8;border-radius:6px;' +
+        'padding:5px 10px;font-size:.85rem;text-decoration:none';
+      actions.appendChild(nav);
+    }
+    card.appendChild(actions);
+  }
+  return card;
+}
+
+function toggleCardMap(t, mapDiv) {
+  const open = mapDiv.style.display === 'block';
+  mapDiv.style.display = open ? 'none' : 'block';
+  if (open) return;
+  if (!cardMaps[t.id]) {
+    const m = L.map(mapDiv, { zoomControl: false, attributionControl: false });
+    L.tileLayer(TILES, { attribution: TILE_ATTR }).addTo(m);
+    L.circleMarker([t.lat, t.lon], { radius: 8, color: '#4a4aef', fillColor: '#4a4aef',
+      fillOpacity: .8 }).addTo(m);
+    m.setView([t.lat, t.lon], 15);
+    cardMaps[t.id] = m;
+  }
+  setTimeout(() => cardMaps[t.id].invalidateSize(), 50);
+}
+
+async function patchTask(id, fields) {
+  const res = await api('/tasks/' + id, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  const data = await res.json();
+  if (data.google_error) showWarn('⚠ Google Tasks: ' + data.google_error);
+  loadTasks();
+}
+
+/* ---------- inline editing ---------- */
+function editCard(card, t) {
+  card.innerHTML = '';
+  const form = document.createElement('div');
+  form.className = 'editForm';
+  const mk = (labelText, el) => {
+    const l = document.createElement('label');
+    l.textContent = labelText;
+    form.append(l, el);
+    return el;
+  };
+  const titleIn = mk('Title', document.createElement('input'));
+  titleIn.value = t.title;
+  const descIn = mk('Description', document.createElement('textarea'));
+  descIn.rows = 2; descIn.value = t.description || '';
+  const dateIn = mk('Deadline', document.createElement('input'));
+  dateIn.type = 'date'; dateIn.value = t.deadline || '';
+  const timeIn = mk('Time', document.createElement('input'));
+  timeIn.type = 'time'; timeIn.value = t.deadline_time || '';
+
+  const locWrap = document.createElement('div');
+  locWrap.className = 'suggestBox';
+  const locIn = document.createElement('input');
+  locIn.placeholder = 'search a place…';
+  locIn.value = t.location || '';
+  const sug = document.createElement('div');
+  sug.className = 'suggest'; sug.style.display = 'none';
+  locWrap.append(locIn, sug);
+  mk('Location', locWrap);
+
+  let picked = { lat: t.lat, lon: t.lon }; // kept unless the text changes
+  let debounce = null;
+  locIn.addEventListener('input', () => {
+    picked = {};
+    clearTimeout(debounce);
+    const q = locIn.value.trim();
+    if (q.length < 3) { sug.style.display = 'none'; return; }
+    debounce = setTimeout(async () => {
+      try {
+        const res = await api('/geocode?q=' + encodeURIComponent(q));
+        const results = (await res.json()).results;
+        sug.innerHTML = '';
+        for (const r of results) {
+          const d = document.createElement('div');
+          d.textContent = r.label;
+          d.addEventListener('click', () => {
+            locIn.value = r.label.split(',').slice(0, 2).join(',');
+            picked = { lat: r.lat, lon: r.lon };
+            sug.style.display = 'none';
+          });
+          sug.appendChild(d);
+        }
+        sug.style.display = results.length ? 'block' : 'none';
+      } catch (err) { /* suggestions are optional */ }
+    }, 400);
+  });
+
+  const row = document.createElement('div');
+  row.className = 'actions';
+  const save = document.createElement('button');
+  save.textContent = '💾 save';
+  save.addEventListener('click', () => {
+    const fields = {
+      title: titleIn.value.trim() || t.title,
+      description: descIn.value.trim() || null,
+      deadline: dateIn.value || null,
+      deadline_time: timeIn.value || null,
+      location: locIn.value.trim() || null,
+    };
+    if (picked.lat != null) { fields.lat = picked.lat; fields.lon = picked.lon; }
+    if (!fields.location) { fields.lat = null; fields.lon = null; }
+    patchTask(t.id, fields);
+  });
+  const cancel = document.createElement('button');
+  cancel.textContent = 'cancel';
+  cancel.addEventListener('click', render);
+  row.append(save, cancel);
+
+  form.appendChild(row);
+  card.appendChild(form);
+  titleIn.focus();
+}
+
+/* ---------- map view ---------- */
+function renderMap() {
+  if (!bigMap) {
+    bigMap = L.map('bigMap');
+    L.tileLayer(TILES, { attribution: TILE_ATTR }).addTo(bigMap);
+    bigMapLayer = L.layerGroup().addTo(bigMap);
+  }
+  bigMapLayer.clearLayers();
+  const located = tasks.filter(t => t.lat != null && t.status !== 'deleted');
+  const bounds = [];
+  for (const t of located) {
+    const color = t.status === 'completed' ? '#8a8a8a' : '#4a4aef';
+    const m = L.circleMarker([t.lat, t.lon],
+      { radius: 9, color, fillColor: color, fillOpacity: .8 }).addTo(bigMapLayer);
+    m.bindPopup('<b>' + t.title + '</b>' +
+      (t.deadline ? '<br>📅 ' + t.deadline : '') +
+      (t.location ? '<br>📍 ' + t.location : '') +
+      '<br><a href="' + mapsUrl(t) + '" target="_blank">🧭 Open in Maps</a>');
+    bounds.push([t.lat, t.lon]);
+  }
+  setTimeout(() => {
+    bigMap.invalidateSize();
+    if (bounds.length) bigMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+    else bigMap.setView([30, 0], 2); // nothing located yet — show the world
+  }, 50);
+}
+
+/* ---------- recording ---------- */
 function pickMime() {
   for (const m of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']) {
     if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
@@ -104,7 +436,13 @@ function pickMime() {
 
 recBtn.addEventListener('click', async () => {
   if (recorder && recorder.state === 'recording') { recorder.stop(); return; }
-  tasksEl.innerHTML = '';
+  noteWarn.innerHTML = '';
+  if (!navigator.mediaDevices) {
+    statusEl.textContent = location.protocol === 'http:'
+      ? 'Recording needs the HTTPS address — browsers only allow the microphone on secure pages. Open the …ts.net link instead.'
+      : 'This browser does not support recording.';
+    return;
+  }
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -130,6 +468,13 @@ recBtn.addEventListener('click', async () => {
   statusEl.textContent = 'Recording…';
 });
 
+function showWarn(text) {
+  noteWarn.innerHTML = '';
+  const w = document.createElement('div');
+  w.className = 'warn'; w.textContent = text;
+  noteWarn.appendChild(w);
+}
+
 async function send(blob) {
   recBtn.textContent = 'Record';
   recBtn.classList.remove('recording');
@@ -139,88 +484,34 @@ async function send(blob) {
   const form = new FormData();
   form.append('audio', blob, 'note.' + ext);
   try {
-    const res = await fetch('/note', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('planner_token') },
-      body: form,
-    });
+    const res = await api('/note', { method: 'POST', body: form });
     const data = await res.json();
-    if (res.status === 401) {
-      statusEl.textContent = 'Wrong token — enter it again.';
-      localStorage.removeItem('planner_token'); setup();
-    } else if (!res.ok || data.status === 'error') {
+    if (!res.ok || data.status === 'error') {
       statusEl.textContent = 'Error: ' + (data.error || res.status);
     } else {
-      render(data);
+      const lines = [
+        ...(data.added || []).map(t => '＋ ' + t.title),
+        ...(data.updated || []).map(t => '✏️ ' + t.title),
+        ...(data.completed || []).map(t => '✓ ' + t.title),
+        ...(data.deleted || []).map(t => '🗑 ' + t.title),
+      ];
+      statusEl.innerHTML = '';
+      if (!lines.length) statusEl.textContent = 'Nothing to do in that note.';
+      for (const line of lines) {
+        const d = document.createElement('div');
+        d.textContent = line;
+        statusEl.appendChild(d);
+      }
+      for (const w of (data.warnings || [])) showWarn('⚠ ' + w);
+      loadTasks();
     }
   } catch (err) {
-    statusEl.textContent = 'Could not reach the Pi: ' + err.message;
+    if (err.message !== 'unauthorized') {
+      statusEl.textContent = 'Could not reach the Pi: ' + err.message;
+    }
   } finally {
     recBtn.disabled = false;
   }
-}
-
-function taskCard(t) {
-  const div = document.createElement('div');
-  div.className = 'task';
-  const title = document.createElement('div');
-  title.className = 'title'; title.textContent = t.title;
-  div.appendChild(title);
-  if (t.description) {
-    const de = document.createElement('div');
-    de.className = 'desc'; de.textContent = t.description;
-    div.appendChild(de);
-  }
-  if (t.deadline) {
-    const d = document.createElement('div');
-    d.className = 'deadline'; d.textContent = '📅 ' + t.deadline;
-    div.appendChild(d);
-  }
-  if (t.location) {
-    const l = document.createElement('div');
-    l.className = 'location'; l.textContent = '📍 ' + t.location;
-    div.appendChild(l);
-  }
-  const s = document.createElement('div');
-  s.className = 'source'; s.textContent = '“' + t.source + '”';
-  div.appendChild(s);
-  if (t.received_at) {
-    const m = document.createElement('div');
-    m.className = 'meta';
-    m.textContent = 'added ' + new Date(t.received_at).toLocaleString(undefined,
-      { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-    div.appendChild(m);
-  }
-  return div;
-}
-
-function render(data) {
-  const tasks = data.tasks || [];
-  statusEl.textContent = tasks.length
-    ? 'Saved ' + tasks.length + ' task' + (tasks.length > 1 ? 's' : '') + ' ✓'
-    : 'No tasks found in that note.';
-  tasksEl.innerHTML = '';
-  for (const t of tasks) tasksEl.appendChild(taskCard(t));
-  if (Array.isArray(data.google_tasks)) {
-    const w = document.createElement('div');
-    w.className = 'warn';
-    w.textContent = '⚠ Not added to Google Tasks: ' + data.google_tasks[0];
-    tasksEl.appendChild(w);
-  }
-  loadHistory();
-}
-
-async function loadHistory() {
-  try {
-    const res = await fetch('/tasks', {
-      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('planner_token') },
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-    historyList.innerHTML = '';
-    for (const t of data.tasks) historyList.appendChild(taskCard(t));
-    historyEl.hidden = data.tasks.length === 0;
-  } catch (err) { /* history is best-effort; recording still works without it */ }
 }
 
 setup();

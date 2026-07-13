@@ -22,7 +22,10 @@ GOOGLE_DIR = PROJECT_DIR / "google"
 CLIENT_SECRET = GOOGLE_DIR / "client_secret.json"
 TOKEN_FILE = GOOGLE_DIR / "token.json"
 
-SCOPES = ["https://www.googleapis.com/auth/tasks"]
+SCOPES = [
+    "https://www.googleapis.com/auth/tasks",
+    "https://www.googleapis.com/auth/calendar.events",
+]
 
 
 def main():

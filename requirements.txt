@@ -4,3 +4,4 @@ python-dotenv>=1.0
 openai>=1.40
 google-api-python-client>=2.100
 google-auth-oauthlib>=1.2
+requests>=2.31
