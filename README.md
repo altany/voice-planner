@@ -11,6 +11,8 @@ your phone, the phone sends it to a Raspberry Pi over Tailscale, and the Pi:
 4. adds each task to your Google Tasks list
 5. replies to your phone with the extracted tasks
 
+<p align="center"><img src="docs/screenshot.jpg" width="300" alt="The record page on a phone: a Record button above tasks with dates, times and places"></p>
+
 It runs as a small systemd service (Flask + Waitress, one worker) and is
 designed to sit quietly next to other things on the Pi — it uses port **8484**
 (clear of Immich's 2283) and is capped at 300 MB of RAM by systemd.
